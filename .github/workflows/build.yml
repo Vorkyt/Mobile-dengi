@@ -13,7 +13,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
@@ -22,36 +22,62 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            python3-pip \
-            build-essential \
-            git \
-            libffi-dev \
-            libssl-dev \
-            libltdl-dev \
-            libsqlite3-dev \
-            zlib1g-dev \
-            libbz2-dev \
-            openjdk-17-jdk \
-            unzip \
-            zip
+            python3-pip build-essential git \
+            libffi-dev libssl-dev libltdl-dev \
+            libsqlite3-dev zlib1g-dev libbz2-dev \
+            openjdk-17-jdk unzip zip \
+            autoconf libtool pkg-config
 
-      - name: Install buildozer and cython
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install Android SDK
+        run: |
+          cd ~
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          mkdir -p Android/sdk/cmdline-tools/latest
+          mv cmdline-tools/* Android/sdk/cmdline-tools/latest/
+          echo "ANDROID_HOME=$HOME/Android/sdk" >> $GITHUB_ENV
+          echo "ANDROID_SDK_ROOT=$HOME/Android/sdk" >> $GITHUB_ENV
+          echo "$HOME/Android/sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$HOME/Android/sdk/platform-tools" >> $GITHUB_PATH
+          echo "$HOME/Android/sdk/build-tools/33.0.2" >> $GITHUB_PATH
+
+      - name: Accept licenses & install SDK packages
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "platform-tools" \
+            "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=$HOME/Android/sdk/ndk/25.2.9519653" >> $GITHUB_ENV
+
+      - name: Install buildozer & cython
         run: |
           pip install --upgrade pip
-          pip install buildozer cython virtualenv
+          pip install buildozer==1.5.0 cython==0.29.37 virtualenv
 
-      - name: Cache buildozer global directory
+      - name: Cache buildozer directory
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ hashFiles('buildozer.spec') }}
-          restore-keys: buildozer-
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-${{ runner.os }}-
 
       - name: Build APK
         run: |
+          export ANDROIDSDK=$HOME/Android/sdk
+          export ANDROIDNDK=$HOME/Android/sdk/ndk/25.2.9519653
+          export ANDROIDAPI=33
+          export ANDROIDMINAPI=21
           buildozer android debug 2>&1
 
-      - name: Upload APK artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: mybudget-apk
